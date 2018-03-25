@@ -104,6 +104,11 @@ def heat() {
   setThermostatMode(31)
 }
 
+def setThermostatMode(mode) {
+  sendEvent(name: "thermostatMode", value: mode, isStateChange: true)
+  secureEncapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: mode))
+}
+
 def setThermostatSetpointUp() {
   def setpoint = device.latestValue("thermostatSetpoint")
   if (setpoint < 24) {
@@ -121,13 +126,8 @@ def setThermostatSetpointDown() {
 }
 
 def setThermostatSetpoint(setpoint) {
-  	sendEvent(name: "thermostatSetpoint", value: setpoint.setScale(0, BigDecimal.ROUND_DOWN), isStateChange: true)
+  sendEvent(name: "thermostatSetpoint", value: setpoint.setScale(0, BigDecimal.ROUND_DOWN), isStateChange: true)
   secureEncapsulate(zwave.thermostatSetpointV2.thermostatSetpointSet([precision: 1, scale: 0, scaledValue: setpoint, setpointType: 1, size: 2]))
-}
-
-def setThermostatMode(mode) {
-  sendEvent(name: "thermostatMode", value: mode, isStateChange: true)
-  secureEncapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: mode))
 }
 
 private encapsulate(physicalgraph.zwave.Command cmd) {
