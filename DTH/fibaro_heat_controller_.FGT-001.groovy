@@ -18,21 +18,33 @@ metadata {
     fingerprint mfr: "010F", prod: "1301", model: "1000"
         
       capability "Battery"
-      capability "ThermostatSetpoint"
       capability "ThermostatMode"
+      capability "ThermostatSetpoint"
       
+      attribute "battery", "number"
+      attribute "batterySensor", "number"
+      attribute "thermostatMode", "ENUM", ["auto", "cool", "emergency heat", "heat", "off"]
+      attribute "thermostatSetpoint", "number"
+      
+      command "auto"
+      command "cool"
+      command "emergencyHeat"
+      command "heat"
+      command "off"
+      command "setThermostatMode"
       command "refresh"
+      
       command "setThermostatSetpointUp"
       command "setThermostatSetpointDown"
 }
 
 tiles(scale: 2) {
 
-  multiAttributeTile(name:"thermostat", type:"general", width:6, height:4, canChangeIcon: false)  {  
+  multiAttributeTile(name:"thermostat", type:"thermostat", width:6, height:4, canChangeIcon: false)  {  
     tileAttribute("device.thermostatMode", key: "PRIMARY_CONTROL") {
-      attributeState("0", action: "thermostatMode.auto", label:"closed", backgroundColor:"#FFFFFF")
-      attributeState("1", action: "thermostatMode.heat", label:"auto", backgroundColor: "#00A0DC")
-      attributeState("31", action: "thermostatMode.cool", label:"open", backgroundColor:"#E86D13")
+      attributeState("off", action: "auto", label:"closed", backgroundColor:"#FFFFFF", nextState: "auto")
+      attributeState("auto", action: "heat", label:"auto", backgroundColor: "#00A0DC", nextState: "heat")
+      attributeState("heat", action: "off", label:"open", backgroundColor:"#E86D13", nextState: "off")
     }
     tileAttribute("device.thermostatSetpoint", key: "VALUE_CONTROL") {
       attributeState("VALUE_UP", action: "setThermostatSetpointUp")
@@ -40,13 +52,13 @@ tiles(scale: 2) {
     }
   }
 
-    standardTile("cool", "device.thermostatMode", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-      state "thermostatMode", action: "thermostatMode.cool", icon: "st.vents.vent-closed"
+    standardTile("off", "device.thermostatMode", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+      state "thermostatMode", action: "off", icon: "st.vents.vent-closed"
     }
 
     valueTile("autoColor", "device.thermostatSetpoint", inactiveLabel: true, decoration: "flat", width: 2, height: 1) {
       state "thermostatSetpoint", label: '', 
-        backgroundColors:	[
+        backgroundColors:    [
           [value: 16, color: "#007fff"],
           [value: 17, color: "#00b6ff"],
           [value: 18, color: "#00faff"],
@@ -60,15 +72,19 @@ tiles(scale: 2) {
     }
 
     standardTile("heat", "device.thermostatMode", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-      state "thermostatMode", action: "thermostatMode.heat", icon: "st.vents.vent-open-text"
+      state "thermostatMode", action: "heat", icon: "st.vents.vent-open-text"
     }
 
     standardTile("auto", "device.thermostatSetpoint", inactiveLabel: false, decoration: "flat", width: 2, height: 1) {
-      state "thermostatSetpoint", action: "thermostatMode.auto", label: 'SET AUTO\n${currentValue}°C', unit: "C"
+      state "thermostatSetpoint", action: "auto", label: 'SET AUTO\n${currentValue}°C', unit: "C"
     }
 
     valueTile("battery", "device.battery", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-      state "battery", label: '${currentValue}%', unit: "%"
+      state "battery", label: 'valve battery\n${currentValue}%', unit: "%"
+    }
+    
+    valueTile("batterySensor", "device.batterySensor", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+      state "batterySensor", label: 'sensor battery\n${currentValue}%', unit: "%"
     }
 
     standardTile("refresh", "command.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
@@ -87,26 +103,44 @@ tiles(scale: 2) {
 
 def refresh() {
   def cmds = []
-  cmds << zwave.batteryV1.batteryGet()
-  cmds << zwave.thermostatModeV2.thermostatModeGet()
+  cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 1]
+  cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 2]
+  cmds << [cmd: zwave.thermostatModeV2.thermostatModeGet(), endpoint: 1]
   encapsulateSequence(cmds, 2000)
 }
 
-def cool() {
-  setThermostatMode(0)	
+
+def off() {
+  setThermostatMode("off")
 }
 
 def auto() {
-  setThermostatMode(1)
+  setThermostatMode("auto")
 }
 
 def heat() {
-  setThermostatMode(31)
+  setThermostatMode("heat")
 }
 
-def setThermostatMode(mode) {
+def setThermostatMode(String mode) {
   sendEvent(name: "thermostatMode", value: mode, isStateChange: true)
-  secureEncapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: mode))
+  switch (mode) {
+    case "auto":
+      encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 1), 1)
+      break
+    case "cool":
+      //
+      break
+    case "emergency heat":
+      //
+      break
+    case "heat":
+      encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 31), 1)
+      break
+    case "off":
+      encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 0), 1)
+      break
+  }
 }
 
 def setThermostatSetpointUp() {
@@ -126,8 +160,8 @@ def setThermostatSetpointDown() {
 }
 
 def setThermostatSetpoint(setpoint) {
-  sendEvent(name: "thermostatSetpoint", value: setpoint.setScale(0, BigDecimal.ROUND_DOWN), isStateChange: true)
-  secureEncapsulate(zwave.thermostatSetpointV2.thermostatSetpointSet([precision: 1, scale: 0, scaledValue: setpoint, setpointType: 1, size: 2]))
+  sendEvent(name: "thermostatSetpoint", unit: "C", value: setpoint.setScale(0, BigDecimal.ROUND_DOWN), isStateChange: true)
+  encapsulate(zwave.thermostatSetpointV2.thermostatSetpointSet([precision: 1, scale: 0, scaledValue: setpoint, setpointType: 1, size: 2]), 1)
 }
 
 private encapsulate(physicalgraph.zwave.Command cmd) {
@@ -139,13 +173,23 @@ private encapsulate(physicalgraph.zwave.Command cmd) {
   }
 }
 
-private secureEncapsulate(physicalgraph.zwave.Command cmd) {
-  log.debug "${device.displayName} - encapsulating command using Secure Encapsulation, command: ${cmd}"
-  zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
+private encapsulate(physicalgraph.zwave.Command cmd, endpoint) {
+  secureEncapsulate(multichannelEncapsulate(cmd, endpoint)).format()
 }
 
 private encapsulateSequence(cmds, delay) {
-  delayBetween(cmds.collect{ encapsulate(it) }, delay)
+  def commands = cmds.collect{[it.get('cmd'), it.get('endpoint')]}
+  delayBetween(commands.collect{encapsulate(it)}, delay)
+}
+
+private secureEncapsulate(physicalgraph.zwave.Command cmd) {
+  log.trace "${device.displayName} - encapsulating command using Secure Encapsulation, command: ${cmd}"
+  zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd)
+}
+
+private multichannelEncapsulate(physicalgraph.zwave.Command cmd, endpoint) {
+  log.trace "${device.displayName} - encapsulating command using Multi Channel Encapsulation, command: ${cmd}"
+  zwave.multiChannelV3.multiChannelCmdEncap(destinationEndPoint: endpoint).encapsulate(cmd)
 }
 
 
@@ -160,9 +204,8 @@ def parse(String description) {
   def cmd = zwave.parse(description)
   if (cmd) {
     result = zwaveEvent(cmd)
-    log.debug "${device.displayName} - parsed ${cmd} to ${result.inspect()}"
   } else {
-    log.debug "${device.displayName} - non-parsed event: ${description}"
+    log.warn "${device.displayName} - non-parsed event: ${description}"
   }
   return result
 }
@@ -174,29 +217,68 @@ def zwaveEvent(physicalgraph.zwave.Command cmd) {
 def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
   def encapsulatedCommand = cmd.encapsulatedCommand(cmdVersions()) 
   if (encapsulatedCommand) {
-    log.debug "${device.displayName} - parsed SecurityMessageEncapsulation into: ${encapsulatedCommand}"
+    log.trace "${device.displayName} - parsed SecurityMessageEncapsulation into: ${encapsulatedCommand}"
     zwaveEvent(encapsulatedCommand)
   } else {
-    log.warn "${device.displayName} – unable to extract secure cmd from $cmd"
+    log.warn "${device.displayName} – unable to extract secure command from $cmd"
     createEvent(descriptionText: cmd.toString())
   }
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd)
-{
+def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
+  def encapsulatedCommand = cmd.encapsulatedCommand(cmdVersions()) 
+  if (encapsulatedCommand) {
+    log.trace "${device.displayName} - parsed MultiChannelCmdEncap into: ${encapsulatedCommand}"
+    zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint)
+  } else {
+    log.warn "${device.displayName} – unable to extract multi channel command from $cmd"
+    createEvent(descriptionText: cmd.toString())
+  }
+}
+
+
+def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd, sourceEndPoint = null) {
   //
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
-  createEvent([name: "battery", unit: "%", value: cmd.batteryLevel])
+def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd, sourceEndPoint = null) {
+  def result
+  switch(sourceEndPoint) {
+      case 1:
+      result = createEvent([name: "battery", unit: "%", value: cmd.batteryLevel])
+      break
+    case 2:
+      result = createEvent([name: "batterySensor", unit: "%", value: cmd.batteryLevel])
+      break
+    default:
+      result = createEvent([name: "battery", unit: "%", value: cmd.batteryLevel])
+      break
+  }
+  log.info "${device.displayName} - parsed event ${cmd} into: ${result}"
+  return result
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv2.ThermostatSetpointReport cmd) {
-  createEvent([name: "thermostatSetpoint", unit: "C", value: cmd.scaledValue.setScale(0, BigDecimal.ROUND_DOWN)])
+def zwaveEvent(physicalgraph.zwave.commands.thermostatsetpointv2.ThermostatSetpointReport cmd, sourceEndPoint = null) {
+  def result = createEvent([name: "thermostatSetpoint", unit: "C", value: cmd.scaledValue.setScale(0, BigDecimal.ROUND_DOWN)])
+  log.info "${device.displayName} - parsed event ${cmd} into: ${result}"
+  return result
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport cmd) {
-  createEvent([name: "thermostatMode", value: cmd.mode])
+def zwaveEvent(physicalgraph.zwave.commands.thermostatmodev2.ThermostatModeReport cmd, sourceEndPoint = null) {
+  def result
+  switch (cmd.mode) {
+    case 1:
+      result = createEvent([name: "thermostatMode", value: "auto"])
+      break
+    case 31:
+      result = createEvent([name: "thermostatMode", value: "heat"])
+      break
+    case 0:
+      result = createEvent([name: "thermostatMode", value: "off"])
+      break
+  }
+  log.info "${device.displayName} - parsed event ${cmd} into: ${result}"
+  return result
 }
 
 
