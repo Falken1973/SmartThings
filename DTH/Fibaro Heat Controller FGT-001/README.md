@@ -1,5 +1,16 @@
 # Fibaro Heat Controller DTH
 
+## Update (1.4.2018)
+
+There is already indeed new firmware 4.3. I have the ability to update my device, but it would costs 25$ and over an hour of my time, so I’m going to wait for more stable firmware. The new firmware shoudn’t break any of DTH functionality.
+
+* Added support for external sensor
+* Added ability to change device additional parameters
+* Added automatic polling
+* Added new tiles showing if external sensor is connected and if open window is detected
+
+## Description:
+
 This device consists of two endpoinds. One represents radiator valve, the other is external temperature sensor. Device handler is tested on firmware 4.0 only. This is currently the newest (and only?) firmware, but I’ve heard that new firmware is in development due to bad PID regulator algoritm.
 
 ## Functionality:
@@ -12,10 +23,10 @@ This device consists of two endpoinds. One represents radiator valve, the other 
 
 ## What is missing:
 
-* Second endpoint (temperature sensor)
+* <s>Second endpoint (temperature sensor)</s>
 * Scheduling
 * Notifications
-* Configurable parameters
+* <s>Configurable parameters</s>
 * Farenheit :-)
 
 ## Known issues:
