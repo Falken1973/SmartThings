@@ -197,8 +197,6 @@ def refresh() {
 def poll() {
   log.debug "poll()"
   def cmds = []
-  cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 1]
-  cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 2]
   cmds << [cmd: zwave.sensorMultilevelV5.sensorMultilevelGet(), endpoint: 2]
   encapsulateSequence(cmds, 2000)
 }
@@ -286,15 +284,21 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd, sourceEndPo
 
 def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd, sourceEndPoint = null) {
   def result
+  def batteryLevel
+  if (cmd.batteryLevel == 255) {
+  	batteryLevel = 0
+  } else {
+  	batteryLevel = cmd.batteryLevel
+  }
   switch(sourceEndPoint) {
     case 1:
-      result = createEvent([name: "battery", unit: "%", value: cmd.batteryLevel])
+      result = createEvent([name: "battery", unit: "%", value: batteryLevel])
       break
     case 2:
-      result = createEvent([name: "batterySensor", unit: "%", value: cmd.batteryLevel])
+      result = createEvent([name: "batterySensor", unit: "%", value: batteryLevel])
       break
     default:
-      result = createEvent([name: "battery", unit: "%", value: cmd.batteryLevel])
+      result = createEvent([name: "battery", unit: "%", value: batteryLevel])
       break
   }
   log.info "${device.displayName} - parsed event ${cmd} into: ${result}"
