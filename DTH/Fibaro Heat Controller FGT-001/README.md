@@ -1,5 +1,10 @@
 # Fibaro Heat Controller DTH
 
+## Update (16.9.2018)
+
+* Removed battery query from automatic polling – it heavily drained Valve battery
+* Fixed depleted battery value – 255% to 0%
+
 ## Update (1.4.2018)
 
 There is already indeed new firmware 4.3. I have the ability to update my device, but it would costs 25$ and over an hour of my time, so I’m going to wait for more stable firmware. The new firmware shoudn’t break any of DTH functionality.
