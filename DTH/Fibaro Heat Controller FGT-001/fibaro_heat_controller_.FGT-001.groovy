@@ -378,7 +378,6 @@ def zwaveEvent(physicalgraph.zwave.commands.manufacturerspecificv2.ManufacturerS
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.configurationv1.ConfigurationReport cmd) {
-    log.info "${device.displayName} - parsed event  ${cmd}"
     switch (cmd.parameterNumber) {
         case 1:
             settings.overrideScheduleDuration = cmd.scaledConfigurationValue
@@ -398,6 +397,7 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv1.ConfigurationReport 
             log.info "${device.displayName} - parsed event ${cmd} into: ${result1} | ${result2}"
             return [result1, result2]
     }
+    log.info "${device.displayName} - parsed event  ${cmd}"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd, sourceEndPoint = null) {
