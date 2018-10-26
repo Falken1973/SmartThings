@@ -17,7 +17,7 @@
  * along with this program.  If not, see http://www.gnu.org/licenses/.
  */
 metadata {
-    definition(name: "Fibaro Heat Controller", namespace: "Tomas-Mrazek", author: "Tomáš Mrázek") {
+    definition(name: "Fibaro Heat Controller", namespace: "Tomas-Mrazek", author: "Tomáš Mrázek", ocfDeviceType: "oic.d.thermostat") {
         fingerprint mfr: "010F", prod: "1301", model: "1000"
 
         capability "Battery"
@@ -120,7 +120,7 @@ metadata {
     }
 
     preferences {
-        input name: "pollingInMinutes", title: "How often should device be polled (minutes, minimum 5)", description: "", type: "number", range: "5..*", required: true, displayDuringSetup: true
+        input name: "pollingInMinutes", title: "How often should device be polled (minutes between 5 and 60)", description: "", type: "number", range: "5..60", required: true, displayDuringSetup: true
         input name: "traceLogging", title: "Trace logging", description: "", type: "bool"
         input name: "overrideScheduleDuration", title: "1. Override Schedule duration (minutes between 10 and 10000)", description: "", type: "number", range: "10..10000"
         input name: "openWindowDetector", title: "2. Open Window Detector", description: "", type: "bool"
@@ -160,8 +160,7 @@ def updated() {
 
 def setPolling() {
     log.debug "setPolling()"
-    unschedule()
-    runIn(settings.pollingInMinutes * 60, polling)
+    schedule("0 */${settings.pollingInMinutes} * * * ?", polling)
 }
 
 def polling() {
