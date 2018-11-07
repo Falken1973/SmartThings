@@ -134,26 +134,50 @@ metadata {
 /**
  *  SMARTTHINGS INTERNAL
  */
-def updated() {
-    if (state.lastUpdated && (now() - state.lastUpdated) < 6000) return
-    state.lastUpdated = now()
-    log.debug "updated()"
+def installed() {
+    log.debug "installed()"
+    setPolling()
+}
 
-    if (state.initialized == null || state.initialized == false) {
+def updated() {
+    if (state.status == null) {
+        log.debug "updated() – installing"
+        state.status = "INITIALIZING"
+        if (device.displayName != "Fibaro Heat Controller") return
+    }
+
+    if (state.status == "INITIALIZING") {
+        log.debug "updated() – initializing"
         refresh()
-        setPolling()
-        state.initialized = true
         return
     }
 
-    def paramsString = [settings.openWindowDetector, settings.fastOpenWindowDetector, settings.increaseRecieverSensitivity, settings.ledWhenRemoteControl, settings.protectManualOnOff]
-    def params = paramsString.collect({ (it == true) ? 1 : 0 })
-    def cmds = []
-    cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 1, scaledConfigurationValue: settings.overrideScheduleDuration)]
-    cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 2, scaledConfigurationValue: getIntegerFromParams(params))]
-    sendHubCommand(encapsulateSequence(cmds, 2000))
+    if (state.lastUpdated && (now() - state.lastUpdated) < 6000) {
+        return
+    } else if (state.status != "READY") {
+        log.debug "updated() – skipped"
+        return
+    } else {
+        log.debug "updated() - ready"
+        state.lastUpdated = now()
+        state.status = "UPDATING"
+        runIn(30, ready)
+        def paramsString = [settings.openWindowDetector, settings.fastOpenWindowDetector, settings.increaseRecieverSensitivity, settings.ledWhenRemoteControl, settings.protectManualOnOff]
+        def params = paramsString.collect({ (it == "true") ? 1 : 0 })
+        def cmds = []
+        cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 1, scaledConfigurationValue: settings.overrideScheduleDuration)]
+        cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 2, scaledConfigurationValue: getIntegerFromParams(params))]
+        cmds << [cmd: zwave.configurationV1.configurationGet(parameterNumber: 1)]
+        cmds << [cmd: zwave.configurationV1.configurationGet(parameterNumber: 2)]
+        sendHubCommand(encapsulateSequence(cmds, 2000))
 
-    setPolling()
+        setPolling()
+    }
+}
+
+def ready() {
+    log.debug "ready()"
+    state.status = "READY"
 }
 
 def setPolling() {
@@ -168,8 +192,14 @@ def setPolling() {
 }
 
 def polling() {
-    log.debug "polling()"
+    if (state.status != "READY") {
+        log.debug "polling() – skipped"
+        return
+    }
 
+    log.debug "polling()"
+    state.status = "POLLING"
+    runIn(30, ready)
     def cmds = []
     cmds << [cmd: zwave.sensorMultilevelV5.sensorMultilevelGet(), endpoint: 2]
     cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 1]
@@ -258,7 +288,14 @@ def deviceNotification(notification) {
 }
 
 def refresh() {
+    if (state.status != "READY" && state.status != "INITIALIZING") {
+        log.debug "refresh() – skipped"
+        return
+    }
+
     log.debug "refresh()"
+    state.status = "REFRESHING"
+    runIn(30, ready)
     def cmds = []
     cmds << [cmd: zwave.thermostatModeV2.thermostatModeGet(), endpoint: 1]
     cmds << [cmd: zwave.thermostatSetpointV2.thermostatSetpointGet(setpointType: 1), endpoint: 1]
