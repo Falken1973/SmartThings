@@ -1,6 +1,18 @@
 # Fibaro Heat Controller DTH
 
-## Update (16.9.2018)
+## Update (7.11.2018) – v0.2.0
+
+ATTENTION – this release is not compatible with the previous ones. Please remove (exclude) and again add (include) devices to SmartThings.
+
+* Fixed a bug, where a setpoint was limited to 16-24°C range instead of 10-30°C (turning the knob manually is still limited by device itself)
+* Google Home and Amazon Alexa are now supported – with a limited functionality (read temperature, change setpoint). NOTE: I do not recommend using it, both SmartApps are obsolete. Google Home for example increments setpoint by half  a degree, which is automatically rounded. Alexa on the other hand updates both cooling and heating setpoint. For example if you set 22°C in Alexa, it actually sets heating setpoint as 20°C and cooling setpoint as 24°C. Device Handler uses only heating setpointc, so value displayed in Alexa is 2°C higher than actual. 
+* Polling – re-added battery, added settings for custom interval between automatic polls
+* Settings – added trace logging, added default value and required validation
+* Added automatic refresh during first setup (inclusion) in SmartThings
+* Added protection against device command overflow while multi-command method is already running (refresh, polling, etc...)
+* Licence changed to GNU v3.0 
+
+## Update (16.9.2018) – v0.1.0 
 
 * Removed battery query from automatic polling – it heavily drained Valve battery
 * Fixed depleted battery value – 255% to 0%
