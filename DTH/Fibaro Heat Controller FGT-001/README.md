@@ -1,6 +1,6 @@
 # Fibaro Heat Controller DTH
 
-## Update (7.11.2018) – v0.2.1
+## Update (26.03.2019) – v0.2.1
 
 * Added tepomrary solution and possible fix to [#3](https://github.com/Tomas-Mrazek/SmartThings/issues/3)
 
