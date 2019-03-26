@@ -1,7 +1,7 @@
 /**
  * Fibaro Heat Controller FGT-001
  *
- * Copyright (C) 2018 Tomáš Mrázek
+ * Copyright (C) 2019 Tomáš Mrázek
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,8 +34,8 @@ metadata {
 
         command "setHeatingSetpointUp"
         command "setHeatingSetpointDown"
-        command "firmware"
-        command "device"
+        command "info"
+        command "resetStatus"
 
     }
 
@@ -109,12 +109,12 @@ metadata {
             state "refresh", label: 'refresh', action: "refresh.refresh", icon: "st.secondary.refresh-icon"
         }
 
-        standardTile("firmware", "firmware", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-            state "firmware", label: 'firmware', action: "firmware"
+        standardTile("info", "info", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+            state "info", label: 'info', action: "info"
         }
-
-        standardTile("device", "device", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-            state "device", label: 'device', action: "device"
+        
+        standardTile("resetStatus", "resetStatus", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+            state "resetStatus", label: 'reset status', action: "resetStatus"
         }
 
     }
@@ -135,25 +135,25 @@ metadata {
  *  SMARTTHINGS INTERNAL
  */
 def installed() {
-    log.debug "installed()"
+	log.debug "installed()"
     setPolling()
 }
-
-def updated() {
+ 
+def updated() {   
     if (state.status == null) {
         log.debug "updated() – installing"
-        state.status = "INITIALIZING"
-        if (device.displayName != "Fibaro Heat Controller") return
+		state.status = "INITIALIZING"
+    	if (device.displayName != "Fibaro Heat Controller") return
     }
-
+    
     if (state.status == "INITIALIZING") {
         log.debug "updated() – initializing"
         refresh()
         return
     }
-
+    
     if (state.lastUpdated && (now() - state.lastUpdated) < 6000) {
-        return
+    	return
     } else if (state.status != "READY") {
         log.debug "updated() – skipped"
         return
@@ -161,9 +161,12 @@ def updated() {
         log.debug "updated() - ready"
         state.lastUpdated = now()
         state.status = "UPDATING"
-        runIn(30, ready)
+        runIn(60, ready)
         def paramsString = [settings.openWindowDetector, settings.fastOpenWindowDetector, settings.increaseRecieverSensitivity, settings.ledWhenRemoteControl, settings.protectManualOnOff]
         def params = paramsString.collect({ (it == "true") ? 1 : 0 })
+        if (settings.traceLogging == "true") {
+        	log.trace "params: ${params} | getIntegerFromParams: ${getIntegerFromParams(params)}"
+    	}
         def cmds = []
         cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 1, scaledConfigurationValue: settings.overrideScheduleDuration)]
         cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 2, scaledConfigurationValue: getIntegerFromParams(params))]
@@ -180,7 +183,7 @@ def ready() {
     state.status = "READY"
 }
 
-def setPolling() {
+def setPolling() {   
     log.debug "setPolling()"
     int minutes
     if (settings.pollingInMinutes) {
@@ -199,7 +202,7 @@ def polling() {
 
     log.debug "polling()"
     state.status = "POLLING"
-    runIn(30, ready)
+    runIn(60, ready)
     def cmds = []
     cmds << [cmd: zwave.sensorMultilevelV5.sensorMultilevelGet(), endpoint: 2]
     cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 1]
@@ -227,18 +230,24 @@ def setHeatingSetpointDown() {
     setHeatingSetpoint(setpoint)
 }
 
-def firmware() {
-    log.debug "firmware()"
-    encapsulate(zwave.firmwareUpdateMdV2.firmwareMdGet())
-}
-
-def device() {
-    log.debug "device()"
+def info() {
+    log.debug "info()"
+    if (settings.traceLogging == "true") {
+        log.trace "status: $state.status"
+    }
     def cmds = []
     cmds << [cmd: zwave.manufacturerSpecificV2.deviceSpecificGet()]
     cmds << [cmd: zwave.manufacturerSpecificV2.manufacturerSpecificGet()]
+    cmds << [cmd: zwave.firmwareUpdateMdV2.firmwareMdGet()]
+    cmds << [cmd: zwave.versionV1.versionGet()]
     encapsulateSequence(cmds, 2000)
 }
+
+def resetStatus() {
+	log.debug "resetStatus()"
+    ready();
+}
+
 
 /**
  *  SMARTTHINGS CAPABILITIES
@@ -295,7 +304,7 @@ def refresh() {
 
     log.debug "refresh()"
     state.status = "REFRESHING"
-    runIn(30, ready)
+    runIn(60, ready)
     def cmds = []
     cmds << [cmd: zwave.thermostatModeV2.thermostatModeGet(), endpoint: 1]
     cmds << [cmd: zwave.thermostatSetpointV2.thermostatSetpointGet(setpointType: 1), endpoint: 1]
@@ -402,6 +411,10 @@ def zwaveEvent(physicalgraph.zwave.commands.manufacturerspecificv2.DeviceSpecifi
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.manufacturerspecificv2.ManufacturerSpecificReport cmd) {
+    log.info "parsed event ${cmd}"
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.versionv1.VersionReport cmd) {
     log.info "parsed event ${cmd}"
 }
 
