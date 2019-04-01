@@ -27,6 +27,7 @@ metadata {
         capability "Configuration"
         capability "Notification"
         capability "Refresh"
+        capability "Health Check"
 
         attribute "batterySensor", "number"
         attribute "externalSensorConnected", "string"
@@ -112,10 +113,6 @@ metadata {
         standardTile("info", "info", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
             state "info", label: 'info', action: "info"
         }
-        
-        standardTile("resetStatus", "resetStatus", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-            state "resetStatus", label: 'reset status', action: "resetStatus"
-        }
 
     }
 
@@ -136,6 +133,10 @@ metadata {
  */
 def installed() {
 	log.debug "installed()"
+    sendEvent(name: "checkInterval", value: 720, displayed: false)
+    sendEvent(name: "supportedThermostatModes", value: ["off", "auto", "heat"], displayed: false)
+    sendEvent(name: "heatingSetpointRange", value: [10, 30], displayed: false)
+    unschedule()
     setPolling()
 }
  
@@ -152,14 +153,11 @@ def updated() {
         return
     }
     
-    if (state.lastUpdated && (now() - state.lastUpdated) < 6000) {
-    	return
-    } else if (state.status != "READY") {
+     if (state.status != "READY") {
         log.debug "updated() – skipped"
         return
     } else {
         log.debug "updated() - ready"
-        state.lastUpdated = now()
         state.status = "UPDATING"
         runIn(60, ready)
         def paramsString = [settings.openWindowDetector, settings.fastOpenWindowDetector, settings.increaseRecieverSensitivity, settings.ledWhenRemoteControl, settings.protectManualOnOff]
@@ -168,10 +166,10 @@ def updated() {
         	log.trace "params: ${params} | getIntegerFromParams: ${getIntegerFromParams(params)}"
     	}
         def cmds = []
-        cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 1, scaledConfigurationValue: settings.overrideScheduleDuration)]
-        cmds << [cmd: zwave.configurationV1.configurationSet(parameterNumber: 2, scaledConfigurationValue: getIntegerFromParams(params))]
-        cmds << [cmd: zwave.configurationV1.configurationGet(parameterNumber: 1)]
-        cmds << [cmd: zwave.configurationV1.configurationGet(parameterNumber: 2)]
+        cmds << [cmd: zwave.configurationV2.configurationSet(parameterNumber: 1, scaledConfigurationValue: settings.overrideScheduleDuration)]
+        cmds << [cmd: zwave.configurationV2.configurationSet(parameterNumber: 2, scaledConfigurationValue: getIntegerFromParams(params))]
+        cmds << [cmd: zwave.configurationV2.configurationGet(parameterNumber: 1)]
+        cmds << [cmd: zwave.configurationV2.configurationGet(parameterNumber: 2)]
         sendHubCommand(encapsulateSequence(cmds, 2000))
 
         setPolling()
@@ -207,7 +205,7 @@ def polling() {
     cmds << [cmd: zwave.sensorMultilevelV5.sensorMultilevelGet(), endpoint: 2]
     cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 1]
     cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 2]
-    cmds << [cmd: zwave.configurationV1.configurationGet(parameterNumber: 3)]
+    cmds << [cmd: zwave.configurationV2.configurationGet(parameterNumber: 3)]
     sendHubCommand(encapsulateSequence(cmds, 2000))
 }
 
@@ -235,17 +233,6 @@ def info() {
     if (settings.traceLogging == "true") {
         log.trace "status: $state.status"
     }
-    def cmds = []
-    cmds << [cmd: zwave.manufacturerSpecificV2.deviceSpecificGet()]
-    cmds << [cmd: zwave.manufacturerSpecificV2.manufacturerSpecificGet()]
-    cmds << [cmd: zwave.firmwareUpdateMdV2.firmwareMdGet()]
-    cmds << [cmd: zwave.versionV1.versionGet()]
-    encapsulateSequence(cmds, 2000)
-}
-
-def resetStatus() {
-	log.debug "resetStatus()"
-    ready();
 }
 
 
@@ -267,14 +254,14 @@ def heat() {
 def setThermostatMode(String mode) {
     sendEvent(name: "thermostatMode", value: mode)
     switch (mode) {
+        case "off":
+            encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 0), 1)
+            break
         case "auto":
             encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 1), 1)
             break
         case "heat":
             encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 31), 1)
-            break
-        case "off":
-            encapsulate(zwave.thermostatModeV2.thermostatModeSet(mode: 0), 1)
             break
     }
 }
@@ -294,6 +281,7 @@ def setHeatingSetpoint(setpoint) {
 
 def deviceNotification(notification) {
     //TODO
+    // - Might not be needed
 }
 
 def refresh() {
@@ -308,11 +296,16 @@ def refresh() {
     def cmds = []
     cmds << [cmd: zwave.thermostatModeV2.thermostatModeGet(), endpoint: 1]
     cmds << [cmd: zwave.thermostatSetpointV2.thermostatSetpointGet(setpointType: 1), endpoint: 1]
-    cmds << [cmd: zwave.configurationV1.configurationGet(parameterNumber: 3)]
+    cmds << [cmd: zwave.configurationV2.configurationGet(parameterNumber: 3)]
     cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 1]
     cmds << [cmd: zwave.sensorMultilevelV5.sensorMultilevelGet(), endpoint: 2]
     cmds << [cmd: zwave.batteryV1.batteryGet(), endpoint: 2]
     sendHubCommand(encapsulateSequence(cmds, 2000))
+}
+
+def ping() {
+	log.debug "ping()"
+	encapsulate(zwave.manufacturerSpecificV2.deviceSpecificGet())
 }
 
 /**
@@ -353,72 +346,77 @@ private multichannelEncapsulate(physicalgraph.zwave.Command cmd, endpoint) {
 /**
  *  Z-WAVE DEVICE EVENTS
  */
+private getCommandClassVersions() {
+    [
+            0x22: 1, //APPLICATION_STATUS
+            0x7A: 2, //FIRMWARE_UPDATE_MD
+            0x98: 1, //SECURITY
+            0x72: 2, //MANUFACTURER_SPECIFIC
+            0x70: 1, //CONFIGURATION
+            0x80: 1, //BATTERY
+            0x40: 2, //THERMOSTAT_MODE
+            0x43: 2, //THERMOSTAT_SETPOINT
+            0x31: 5  //SENSOR_MULTILEVEL
+    ]
+}
+
 def parse(String description) {
-    def result = null
-    def cmd = zwave.parse(description)
-    if (cmd) {
-        result = zwaveEvent(cmd)
-    } else {
-        log.warn "non-parsed message: ${description}"
-    }
+	def result = []
+	if (description.startsWith("Err")) {
+	    result = createEvent(descriptionText:description, displayed:true)
+	} else {
+		def cmd = zwave.parse(description, commandClassVersions)
+		if (cmd) {
+			result = zwaveEvent(cmd)
+		}
+	}
     if (settings.traceLogging == "true") {
         log.trace "parsed message: ${description}"
     }
-    return result
-}
-
-def zwaveEvent(physicalgraph.zwave.Command cmd) {
-    log.warn "parsed unhandled event ${cmd}"
-    return result
+	return result
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
-    def encapsulatedCommand = cmd.encapsulatedCommand(cmdVersions())
+    def encapsulatedCommand = cmd.encapsulatedCommand(commandClassVersions)
     if (encapsulatedCommand) {
         if (settings.traceLogging == "true") {
-            log.trace "parsed SecurityMessageEncapsulation into: ${encapsulatedCommand}"
+            log.trace "parsed SecurityMessageEncapsulation into: $encapsulatedCommand"
         }
         zwaveEvent(encapsulatedCommand)
-    } else {
-        log.warn "unable to extract secure command from $cmd"
-        createEvent(descriptionText: cmd.toString())
     }
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.multichannelv3.MultiChannelCmdEncap cmd) {
-    def encapsulatedCommand = cmd.encapsulatedCommand(cmdVersions())
+    def encapsulatedCommand = cmd.encapsulatedCommand(commandClassVersions)
     if (encapsulatedCommand) {
         if (settings.traceLogging == "true") {
-            log.trace "parsed MultiChannelCmdEncap into: ${encapsulatedCommand}"
+            log.trace "parsed MultiChannelCmdEncap into: $encapsulatedCommand"
         }
         zwaveEvent(encapsulatedCommand, cmd.sourceEndPoint)
-    } else {
-        log.warn "unable to extract multi channel command from $cmd"
-        createEvent(descriptionText: cmd.toString())
     }
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
-    log.info "parsed event ${cmd}"
+    log.info "parsed event $cmd"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd) {
-    log.info "parsed event ${cmd}"
+    log.info "parsed event $cmd"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.manufacturerspecificv2.DeviceSpecificReport cmd) {
-    log.info "parsed event ${cmd}"
+    log.info "parsed event $cmd"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.manufacturerspecificv2.ManufacturerSpecificReport cmd) {
-    log.info "parsed event ${cmd}"
+    log.info "parsed event $cmd"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.versionv1.VersionReport cmd) {
-    log.info "parsed event ${cmd}"
+    log.info "parsed event $cmd"
 }
 
-def zwaveEvent(physicalgraph.zwave.commands.configurationv1.ConfigurationReport cmd) {
+def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport cmd) {
     if (cmd.parameterNumber == 3) {
         def params = getParamsFromInteger(cmd.scaledConfigurationValue, 2)
         def result1 = createEvent([name: "externalSensorConnected", value: (params.get(0) == 1) ? "true" : "false"])
@@ -483,21 +481,7 @@ def zwaveEvent(physicalgraph.zwave.commands.sensormultilevelv5.SensorMultilevelR
 
 /**
  *  UTILS
- */
-private Map cmdVersions() {
-    [
-            0x22: 1, //APPLICATION_STATUS
-            0x7A: 2, //FIRMWARE_UPDATE_MD
-            0x98: 1, //SECURITY
-            0x72: 2, //MANUFACTURER_SPECIFIC
-            0x70: 1, //CONFIGURATION
-            0x80: 1, //BATTERY
-            0x40: 2, //THERMOSTAT_MODE
-            0x43: 2, //THERMOSTAT_SETPOINT
-            0x31: 5  //SENSOR_MULTILEVEL
-    ]
-}
-
+ */ 
 private getParamsFromInteger(decimal, numberOfParams) {
     def bit = Math.pow(new Double(2), new Double(numberOfParams - 1))
     def params = []
